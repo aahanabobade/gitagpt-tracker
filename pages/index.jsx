@@ -4,23 +4,11 @@ import Head from 'next/head'
 
 const CORRECT_PIN = process.env.NEXT_PUBLIC_APP_PIN || '2808'
 
-const PALETTE = [
-  '#c9a84c', // gold
-  '#7ec8e3', // blue
-  '#7debb0', // green
-  '#d4a8f0', // purple
-  '#ffd580', // yellow
-  '#f08080', // coral
-  '#80d4f0', // sky
-  '#f0a080', // peach
-  '#a0f080', // lime
-  '#f080d0', // pink
-]
-
-const LAYER  = { fe:'Frontend', be:'Backend', full:'Full Stack', ai:'AI / ML' }
-const PRI    = { mvp:'MVP', v2:'V2', v3:'V3' }
-const STATUS = { todo:'Todo', in_progress:'In Progress', done:'Done' }
-const EMPTY  = { name:'', description:'', layer:'fe', tech:'', priority:'mvp', status:'todo', assigned_to:'' }
+const PALETTE = ['#c9a84c','#7ec8e3','#7debb0','#d4a8f0','#ffd580','#f08080','#80d4f0','#f0a080','#a0f080','#f080d0']
+const LAYER   = { fe:'Frontend', be:'Backend', full:'Full Stack', ai:'AI / ML' }
+const PRI     = { mvp:'MVP', v2:'V2', v3:'V3' }
+const STATUS  = { todo:'Todo', in_progress:'In Progress', done:'Done' }
+const EMPTY   = { name:'', description:'', layer:'fe', tech:'', priority:'mvp', status:'todo', assigned_to:'' }
 
 const C = {
   fe:          { bg:'rgba(42,100,150,.18)',  color:'#7ec8e3', border:'rgba(42,100,150,.35)'  },
@@ -36,28 +24,35 @@ const C = {
 }
 
 const FILTERS = [
-  { key:'all',         label:'All'         },
-  { key:'fe',          label:'Frontend'    },
-  { key:'be',          label:'Backend'     },
-  { key:'full',        label:'Full Stack'  },
-  { key:'ai',          label:'AI / ML'     },
-  { key:'mvp',         label:'MVP'         },
-  { key:'v2',          label:'V2'          },
-  { key:'v3',          label:'V3'          },
-  { key:'todo',        label:'Todo'        },
-  { key:'in_progress', label:'In Progress' },
-  { key:'done',        label:'Done'        },
+  { key:'all', label:'All' }, { key:'fe', label:'Frontend' }, { key:'be', label:'Backend' },
+  { key:'full', label:'Full Stack' }, { key:'ai', label:'AI / ML' },
+  { key:'mvp', label:'MVP' }, { key:'v2', label:'V2' }, { key:'v3', label:'V3' },
+  { key:'todo', label:'Todo' }, { key:'in_progress', label:'In Progress' }, { key:'done', label:'Done' },
 ]
 
+// ── STEP constants ────────────────────────────────────────────────────────────
+const STEP = { PIN: 'pin', AUTH: 'auth', APP: 'app' }
+
 export default function Home() {
+  const [step,      setStep]      = useState(STEP.PIN)
+
+  // PIN
   const [pin,       setPin]       = useState('')
-  const [pinOk,     setPinOk]     = useState(false)
   const [pinErr,    setPinErr]    = useState(false)
+
+  // Auth
+  const [authMode,  setAuthMode]  = useState('login')   // 'login' | 'register'
+  const [username,  setUsername]  = useState('')
+  const [password,  setPassword]  = useState('')
+  const [showPw,    setShowPw]    = useState(false)
+  const [selColor,  setSelColor]  = useState('#c9a84c')
+  const [authErr,   setAuthErr]   = useState('')
+  const [authLoad,  setAuthLoad]  = useState(false)
+
+  // App
+  const [me,        setMe]        = useState(null)       // { id, username, color }
   const [tasks,     setTasks]     = useState([])
-  const [members,   setMembers]   = useState([])   // [{ id, name, color }]
-  const [name,      setName]      = useState('')
-  const [joined,    setJoined]    = useState(false)
-  const [myColor,   setMyColor]   = useState('#c9a84c')
+  const [members,   setMembers]   = useState([])
   const [form,      setForm]      = useState(EMPTY)
   const [editId,    setEditId]    = useState(null)
   const [showForm,  setShowForm]  = useState(false)
@@ -66,34 +61,33 @@ export default function Home() {
   const [toast,     setToast]     = useState(null)
   const [loading,   setLoading]   = useState(true)
 
-  // ── Init ──
+  // ── Restore session ──
   useEffect(() => {
-    const ok = sessionStorage.getItem('gitagpt_pin_ok')
-    if (ok) setPinOk(true)
-    const n  = localStorage.getItem('gitagpt_name')
-    const c  = localStorage.getItem('gitagpt_color') || '#c9a84c'
-    if (n) { setName(n); setMyColor(c); setJoined(true) }
+    const pinOk = sessionStorage.getItem('gitagpt_pin_ok')
+    const saved = localStorage.getItem('gitagpt_user')
+    if (pinOk && saved) {
+      const user = JSON.parse(saved)
+      setMe(user); setStep(STEP.APP)
+    } else if (pinOk) {
+      setStep(STEP.AUTH)
+    }
   }, [])
 
-  // ── Supabase subscriptions ──
+  // ── Realtime subscriptions ──
   useEffect(() => {
-    if (!joined) return
-    fetchTasks()
-    fetchMembers()
-    const ch = supabase
-      .channel('realtime-all')
+    if (step !== STEP.APP) return
+    fetchTasks(); fetchMembers()
+    const ch = supabase.channel('realtime-all')
       .on('postgres_changes', { event:'*', schema:'public', table:'tasks' },   fetchTasks)
       .on('postgres_changes', { event:'*', schema:'public', table:'members' }, fetchMembers)
       .subscribe()
     return () => supabase.removeChannel(ch)
-  }, [joined])
+  }, [step])
 
   async function fetchTasks() {
     const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false })
-    setTasks(data || [])
-    setLoading(false)
+    setTasks(data || []); setLoading(false)
   }
-
   async function fetchMembers() {
     const { data } = await supabase.from('members').select('*').order('joined_at')
     setMembers(data || [])
@@ -103,35 +97,52 @@ export default function Home() {
   function checkPin() {
     if (pin === CORRECT_PIN) {
       sessionStorage.setItem('gitagpt_pin_ok', '1')
-      setPinOk(true); setPinErr(false)
+      setStep(STEP.AUTH); setPinErr(false)
     } else {
       setPinErr(true); setPin('')
     }
   }
 
-  // ── Join (upsert member) ──
-  async function join() {
-    if (!name.trim()) return
-    const color = myColor
-    localStorage.setItem('gitagpt_name',  name.trim())
-    localStorage.setItem('gitagpt_color', color)
-    // upsert so re-joining keeps same row
-    await supabase.from('members').upsert({ name: name.trim(), color }, { onConflict: 'name' })
-    setJoined(true)
+  // ── Auth ──
+  async function handleAuth() {
+    if (!username.trim() || !password.trim()) { setAuthErr('Fill in all fields'); return }
+    setAuthLoad(true); setAuthErr('')
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: authMode, username: username.trim(), password, color: selColor }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setAuthErr(data.error || 'Something went wrong'); setAuthLoad(false); return }
+      localStorage.setItem('gitagpt_user', JSON.stringify(data.user))
+      setMe(data.user); setStep(STEP.APP)
+    } catch {
+      setAuthErr('Network error. Try again.')
+    }
+    setAuthLoad(false)
   }
 
-  // ── Update a member's color ──
+  function logout() {
+    localStorage.removeItem('gitagpt_user')
+    sessionStorage.removeItem('gitagpt_pin_ok')
+    setMe(null); setStep(STEP.PIN); setPin('')
+  }
+
+  // ── Update color ──
   async function updateColor(member, newColor) {
-    await supabase.from('members').update({ color: newColor }).eq('id', member.id)
-    // if it's me, update locally too
-    if (member.name === name) {
-      setMyColor(newColor)
-      localStorage.setItem('gitagpt_color', newColor)
+    await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_color', username: member.name, userId: member.userId, color: newColor }),
+    })
+    if (member.name === me?.username) {
+      const updated = { ...me, color: newColor }
+      setMe(updated); localStorage.setItem('gitagpt_user', JSON.stringify(updated))
     }
     flash('Color updated ✓')
   }
 
-  // ── Remove a member ──
   async function removeMember(member) {
     await supabase.from('members').delete().eq('id', member.id)
     flash(`${member.name} removed`)
@@ -140,25 +151,16 @@ export default function Home() {
   // ── Tasks ──
   async function saveTask() {
     if (!form.name.trim()) return
-    const payload = {
-      ...form,
-      tech: form.tech.split(',').map(t => t.trim()).filter(Boolean),
-      updated_at: new Date().toISOString(),
-    }
+    const payload = { ...form, tech: form.tech.split(',').map(t=>t.trim()).filter(Boolean), updated_at: new Date().toISOString() }
     if (editId) {
-      await supabase.from('tasks').update(payload).eq('id', editId)
-      flash('Updated ✓')
+      await supabase.from('tasks').update(payload).eq('id', editId); flash('Updated ✓')
     } else {
-      await supabase.from('tasks').insert({ ...payload, created_by: name })
-      flash('Task added 🙏')
+      await supabase.from('tasks').insert({ ...payload, created_by: me.username }); flash('Task added 🙏')
     }
     setForm(EMPTY); setEditId(null); setShowForm(false)
   }
 
-  async function deleteTask(id) {
-    await supabase.from('tasks').delete().eq('id', id)
-    flash('Deleted')
-  }
+  async function deleteTask(id) { await supabase.from('tasks').delete().eq('id', id); flash('Deleted') }
 
   async function cycleStatus(task) {
     const order = ['todo','in_progress','done']
@@ -173,68 +175,95 @@ export default function Home() {
   }
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 2400) }
-
-  // helper: get color for a name
-  function colorOf(n) {
-    const m = members.find(m => m.name === n)
-    return m?.color || 'rgba(255,255,255,.35)'
-  }
+  function colorOf(n) { return members.find(m => m.name === n)?.color || 'rgba(255,255,255,.35)' }
 
   const filtered = tasks.filter(t => {
-    if (filter === 'all')                               return true
+    if (filter === 'all') return true
     if (['fe','be','full','ai'].includes(filter))       return t.layer    === filter
     if (['mvp','v2','v3'].includes(filter))             return t.priority === filter
     if (['todo','in_progress','done'].includes(filter)) return t.status   === filter
     return true
   })
+  const stats = { total:tasks.length, done:tasks.filter(t=>t.status==='done').length, mvp:tasks.filter(t=>t.priority==='mvp').length }
+  const meta  = <Head><title>GitaGPT Tracker</title><meta name="viewport" content="width=device-width,initial-scale=1"/></Head>
 
-  const stats = { total: tasks.length, done: tasks.filter(t=>t.status==='done').length, mvp: tasks.filter(t=>t.priority==='mvp').length }
-
-  const meta = <Head><title>GitaGPT Tracker</title><meta name="viewport" content="width=device-width,initial-scale=1"/></Head>
-
-  // ── PIN screen ───────────────────────────────────────────────────────────────
-  if (!pinOk) return (
+  // ════════════════════════════════════════════════════════════════════════════
+  // SCREEN 1 — PIN
+  // ════════════════════════════════════════════════════════════════════════════
+  if (step === STEP.PIN) return (
     <div className="root">{meta}<Styles/>
-      <div className="join-wrap">
+      <div className="center-wrap">
         <div className="om">ॐ</div>
         <h1 className="h1">GitaGPT Tracker</h1>
         <p className="sub">Enter PIN to continue</p>
+        <p className="sub">This is the personal project , nobody can view it if you don't have access to password :P</p>
         <input autoFocus type="password" inputMode="numeric" maxLength={4}
           value={pin} onChange={e=>{setPin(e.target.value);setPinErr(false)}}
           onKeyDown={e=>e.key==='Enter'&&checkPin()}
-          placeholder="● ● ● ●" className={`join-input${pinErr?' inp-err':''}`}/>
-        {pinErr && <p className="pin-err">Wrong PIN. Try again.</p>}
-        <button onClick={checkPin} className="join-btn">Unlock 🔐</button>
+          placeholder="● ● ● ●" className={`auth-input center${pinErr?' inp-err':''}`}/>
+        {pinErr && <p className="auth-err">Wrong PIN. Try again.</p>}
+        <button onClick={checkPin} className="primary-btn">Unlock 🔐</button>
       </div>
     </div>
   )
 
-  // ── Name + color pick screen ─────────────────────────────────────────────────
-  if (!joined) return (
+  // ════════════════════════════════════════════════════════════════════════════
+  // SCREEN 2 — REGISTER / LOGIN
+  // ════════════════════════════════════════════════════════════════════════════
+  if (step === STEP.AUTH) return (
     <div className="root">{meta}<Styles/>
-      <div className="join-wrap">
+      <div className="center-wrap">
         <div className="om">ॐ</div>
         <h1 className="h1">GitaGPT Tracker</h1>
-        <p className="sub">Pick your name & colour</p>
-        <input autoFocus value={name} onChange={e=>setName(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&join()}
-          placeholder="Your name…" className="join-input"/>
-        <div className="color-pick-label">Your colour</div>
-        <div className="color-grid">
-          {PALETTE.map(c => (
-            <div key={c} onClick={()=>setMyColor(c)}
-              className={`color-dot${myColor===c?' selected':''}`}
-              style={{background:c, boxShadow: myColor===c ? `0 0 0 3px rgba(255,255,255,.25), 0 0 12px ${c}88` : 'none'}}/>
-          ))}
+
+        {/* Toggle */}
+        <div className="auth-toggle">
+          <button onClick={()=>{setAuthMode('login');setAuthErr('')}}  className={`toggle-btn${authMode==='login'?' active':''}`}>Sign In</button>
+          <button onClick={()=>{setAuthMode('register');setAuthErr('')}} className={`toggle-btn${authMode==='register'?' active':''}`}>Create Account</button>
         </div>
-        <button onClick={join} className="join-btn" style={{borderColor:`${myColor}66`, color:myColor}}>
-          Enter 🙏
-        </button>
+
+        <div className="auth-card">
+          <input value={username} onChange={e=>{setUsername(e.target.value);setAuthErr('')}}
+            onKeyDown={e=>e.key==='Enter'&&handleAuth()}
+            placeholder="Username" className="auth-input" autoFocus/>
+
+          <div className="pw-wrap">
+            <input value={password} onChange={e=>{setPassword(e.target.value);setAuthErr('')}}
+              onKeyDown={e=>e.key==='Enter'&&handleAuth()}
+              type={showPw?'text':'password'} placeholder="Password" className="auth-input"/>
+            <button className="show-pw" onClick={()=>setShowPw(s=>!s)} tabIndex={-1}>
+              {showPw ? '🙈' : '👁️'}
+            </button>
+          </div>
+
+          {authMode === 'register' && (
+            <>
+              <p className="color-label">Pick your colour</p>
+              <div className="color-grid">
+                {PALETTE.map(c=>(
+                  <div key={c} onClick={()=>setSelColor(c)}
+                    className={`color-dot${selColor===c?' selected':''}`}
+                    style={{background:c, boxShadow:selColor===c?`0 0 0 3px rgba(255,255,255,.2),0 0 10px ${c}88`:'none'}}/>
+                ))}
+              </div>
+            </>
+          )}
+
+          {authErr && <p className="auth-err">{authErr}</p>}
+
+          <button onClick={handleAuth} disabled={authLoad}
+            className="primary-btn" style={{width:'100%', marginTop:4,
+              ...(authMode==='register'?{borderColor:`${selColor}66`,color:selColor,background:`${selColor}18`}:{})}}>
+            {authLoad ? 'Please wait…' : authMode === 'login' ? 'Sign In →' : 'Create Account 🙏'}
+          </button>
+        </div>
       </div>
     </div>
   )
 
-  // ── Main app ─────────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════════
+  // SCREEN 3 — APP
+  // ════════════════════════════════════════════════════════════════════════════
   return (
     <div className="root">{meta}<Styles/>
       {toast && <div className="toast">{toast}</div>}
@@ -244,17 +273,14 @@ export default function Home() {
         <div className="om">ॐ</div>
         <h1 className="h1">GitaGPT Tracker</h1>
         <div className="header-row">
-          <span className="name-badge" style={{color: myColor}}>
-            <span className="dot" style={{background:myColor}}/>
-            {name}
+          <span className="name-badge" style={{color:me?.color}}>
+            <span className="dot" style={{background:me?.color}}/>
+            {me?.username}
           </span>
           <div className="header-btns">
-            <button className="team-btn" onClick={()=>{setShowTeam(s=>!s);setShowForm(false)}}>
-              👥 Team ({members.length})
-            </button>
-            <button className="add-btn" onClick={()=>{setForm(EMPTY);setEditId(null);setShowForm(s=>!s);setShowTeam(false)}}>
-              {showForm ? '✕ Close' : '+ Add Task'}
-            </button>
+            <button className="team-btn" onClick={()=>{setShowTeam(s=>!s);setShowForm(false)}}>👥 Team ({members.length})</button>
+            <button className="add-btn"  onClick={()=>{setForm(EMPTY);setEditId(null);setShowForm(s=>!s);setShowTeam(false)}}>{showForm?'✕ Close':'+ Add Task'}</button>
+            <button className="logout-btn" onClick={logout} title="Sign out">⏏</button>
           </div>
         </div>
       </header>
@@ -263,25 +289,25 @@ export default function Home() {
       {showTeam && (
         <div className="team-panel">
           <h3 className="form-title">Team Members</h3>
-          {members.length === 0 && <p className="empty" style={{padding:'12px 0'}}>No members yet</p>}
+          {members.length === 0 && <p className="empty" style={{padding:'8px 0'}}>No members yet</p>}
           <div className="member-list">
-            {members.map(m => (
+            {members.map(m=>(
               <div key={m.id} className="member-row">
-                <span className="dot" style={{background:m.color, width:12, height:12}}/>
+                <span className="dot" style={{background:m.color,width:12,height:12}}/>
                 <span className="member-name" style={{color:m.color}}>{m.name}</span>
-                {m.name === name && <span className="you-tag">you</span>}
+                {m.name===me?.username && <span className="you-tag">you</span>}
                 <div className="member-colors">
-                  {PALETTE.map(c => (
+                  {PALETTE.map(c=>(
                     <div key={c} onClick={()=>updateColor(m,c)}
                       className={`color-dot sm${m.color===c?' selected':''}`}
-                      style={{background:c, boxShadow: m.color===c ? `0 0 0 2px rgba(255,255,255,.3)` : 'none'}}/>
+                      style={{background:c, boxShadow:m.color===c?`0 0 0 2px rgba(255,255,255,.3)`:'none'}}/>
                   ))}
                 </div>
-                <button className="icon-btn danger" onClick={()=>removeMember(m)} title="Remove">✕</button>
+                <button className="icon-btn danger" onClick={()=>removeMember(m)}>✕</button>
               </div>
             ))}
           </div>
-          <p className="team-hint">Click any colour dot to reassign. Click ✕ to remove a member.</p>
+          <p className="team-hint">Click a colour to reassign · ✕ to remove</p>
         </div>
       )}
 
@@ -302,7 +328,7 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Add/Edit form */}
+      {/* Form */}
       {showForm && (
         <div className="form-card">
           <h3 className="form-title">{editId?'Edit Task':'New Task'}</h3>
@@ -310,21 +336,14 @@ export default function Home() {
             <input value={form.name}        onChange={e=>setForm({...form,name:e.target.value})}        placeholder="Task name *"                  className="inp"/>
             <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description"                  className="inp"/>
             <input value={form.tech}        onChange={e=>setForm({...form,tech:e.target.value})}        placeholder="Tech stack (comma separated)" className="inp"/>
-            {/* Assign to — shows member names as options */}
             <select value={form.assigned_to} onChange={e=>setForm({...form,assigned_to:e.target.value})} className="sel" style={{width:'100%'}}>
               <option value="">Assign to…</option>
               {members.map(m=><option key={m.id} value={m.name}>{m.name}</option>)}
             </select>
             <div className="sel-row">
-              <select value={form.layer}    onChange={e=>setForm({...form,layer:e.target.value})}    className="sel">
-                {Object.entries(LAYER).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </select>
-              <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} className="sel">
-                {Object.entries(PRI).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </select>
-              <select value={form.status}   onChange={e=>setForm({...form,status:e.target.value})}   className="sel">
-                {Object.entries(STATUS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </select>
+              <select value={form.layer}    onChange={e=>setForm({...form,layer:e.target.value})}    className="sel">{Object.entries(LAYER).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+              <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} className="sel">{Object.entries(PRI).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+              <select value={form.status}   onChange={e=>setForm({...form,status:e.target.value})}   className="sel">{Object.entries(STATUS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
             </div>
           </div>
           <div className="form-actions">
@@ -340,20 +359,16 @@ export default function Home() {
         {!loading && filtered.length===0 && <div className="empty">No tasks yet — add one! 🙏</div>}
         {filtered.map(t=>{
           const sc=C[t.status]; const lc=C[t.layer]; const pc=C[t.priority]
-          const assigneeColor = colorOf(t.assigned_to)
-          const creatorColor  = colorOf(t.created_by)
           return (
             <div key={t.id} className={`card${t.status==='done'?' card-done':''}`}>
               <div className="card-top">
                 <div className="card-text">
                   <div className="task-name">{t.name}</div>
-                  {t.description && <div className="task-desc">{t.description}</div>}
+                  {t.description&&<div className="task-desc">{t.description}</div>}
                 </div>
                 <div className="card-actions">
                   <button className="badge status-btn" onClick={()=>cycleStatus(t)} title="Click to advance"
-                    style={{background:sc?.bg,color:sc?.color,border:`1px solid ${sc?.border}`}}>
-                    {STATUS[t.status]}
-                  </button>
+                    style={{background:sc?.bg,color:sc?.color,border:`1px solid ${sc?.border}`}}>{STATUS[t.status]}</button>
                   <button className="icon-btn" onClick={()=>openEdit(t)}>✎</button>
                   <button className="icon-btn danger" onClick={()=>deleteTask(t.id)}>✕</button>
                 </div>
@@ -362,15 +377,8 @@ export default function Home() {
                 <span className="badge" style={{background:lc?.bg,color:lc?.color,border:`1px solid ${lc?.border}`}}>{LAYER[t.layer]}</span>
                 <span className="badge" style={{background:pc?.bg,color:pc?.color,border:`1px solid ${pc?.border}`}}>{PRI[t.priority]}</span>
                 {(t.tech||[]).map((tech,i)=><span key={i} className="tech-tag">{tech}</span>)}
-                {t.assigned_to && (
-                  <span className="assigned" style={{color:assigneeColor}}>
-                    <span className="dot" style={{background:assigneeColor,width:6,height:6}}/>
-                    {t.assigned_to}
-                  </span>
-                )}
-                {t.created_by && (
-                  <span className="created-by" style={{color:creatorColor+'99'}}>by {t.created_by}</span>
-                )}
+                {t.assigned_to&&<span className="assigned" style={{color:colorOf(t.assigned_to)}}><span className="dot" style={{background:colorOf(t.assigned_to),width:6,height:6}}/>{t.assigned_to}</span>}
+                {t.created_by&&<span className="created-by" style={{color:colorOf(t.created_by)+'99'}}>by {t.created_by}</span>}
               </div>
             </div>
           )
@@ -386,83 +394,102 @@ function Styles() {
     body{background:#08050a;font-family:Georgia,serif;color:rgba(240,208,128,.85);-webkit-font-smoothing:antialiased}
     .root{min-height:100vh;padding-bottom:80px}
 
-    /* Join / PIN */
-    .join-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-    .join-input{width:100%;max-width:280px;padding:13px 16px;border-radius:12px;border:1px solid rgba(201,168,76,.25);background:rgba(0,0,0,.4);color:rgba(240,208,128,.9);font-size:18px;outline:none;text-align:center;margin-bottom:10px;font-family:Georgia,serif;letter-spacing:.12em}
-    .join-input.inp-err{border-color:rgba(255,80,80,.5);animation:shake .3s ease}
-    .pin-err{color:rgba(255,80,80,.7);font-size:12px;margin-bottom:10px;font-style:italic}
-    .join-btn{padding:12px 34px;border-radius:30px;border:1px solid rgba(201,168,76,.4);background:rgba(201,168,76,.1);color:#c9a84c;cursor:pointer;font-size:14px;letter-spacing:.08em;margin-top:4px;transition:background .2s}
-    .join-btn:hover{background:rgba(201,168,76,.2)}
+    /* Center screens */
+    .center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+
+    /* Auth card */
+    .auth-card{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px}
+    .auth-input{width:100%;padding:13px 16px;border-radius:10px;border:1px solid rgba(201,168,76,.2);background:rgba(0,0,0,.4);color:rgba(240,208,128,.9);font-size:15px;outline:none;font-family:Georgia,serif}
+    .auth-input.center{text-align:center;letter-spacing:.15em;max-width:280px}
+    .auth-input.inp-err{border-color:rgba(255,80,80,.5);animation:shake .3s ease}
+    .auth-input::placeholder{color:rgba(255,255,255,.2)}
+    .auth-err{color:rgba(255,100,100,.8);font-size:12px;font-style:italic;text-align:center}
+    .pw-wrap{position:relative}
+    .pw-wrap .auth-input{padding-right:44px}
+    .show-pw{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:15px;opacity:.6;padding:4px}
+    .show-pw:hover{opacity:1}
+
+    /* Toggle */
+    .auth-toggle{display:flex;gap:0;margin-bottom:20px;border:1px solid rgba(201,168,76,.15);border-radius:30px;overflow:hidden}
+    .toggle-btn{flex:1;padding:9px 20px;background:transparent;border:none;color:rgba(240,208,128,.35);cursor:pointer;font-family:Georgia,serif;font-size:13px;letter-spacing:.04em;transition:all .2s}
+    .toggle-btn.active{background:rgba(201,168,76,.12);color:#c9a84c}
 
     /* Color picker */
-    .color-pick-label{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:.08em;text-transform:uppercase;margin:18px 0 10px;text-align:center}
-    .color-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:22px;max-width:240px}
+    .color-label{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:.08em;text-transform:uppercase;margin:10px 0 8px;text-align:center}
+    .color-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:8px}
     .color-dot{width:24px;height:24px;border-radius:50%;cursor:pointer;transition:transform .15s}
     .color-dot:hover{transform:scale(1.2)}
     .color-dot.selected{transform:scale(1.25)}
     .color-dot.sm{width:16px;height:16px}
+    .color-dot.sm:hover{transform:scale(1.15)}
     .color-dot.sm.selected{transform:scale(1.2)}
+
+    /* Buttons */
+    .primary-btn{padding:12px 32px;border-radius:30px;border:1px solid rgba(201,168,76,.4);background:rgba(201,168,76,.1);color:#c9a84c;cursor:pointer;font-size:14px;letter-spacing:.06em;transition:background .2s;margin-top:6px}
+    .primary-btn:hover:not(:disabled){background:rgba(201,168,76,.2)}
+    .primary-btn:disabled{opacity:.5;cursor:default}
 
     @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 
     /* Typography */
     .om{font-size:20px;color:rgba(201,168,76,.35);text-align:center;margin-bottom:4px;padding-top:28px}
-    .h1{font-weight:400;color:#c9a84c;text-align:center;letter-spacing:.08em;margin:6px 0 14px;font-size:clamp(16px,3vw,22px)}
+    .h1{font-weight:400;color:#c9a84c;text-align:center;letter-spacing:.08em;margin:6px 0 16px;font-size:clamp(16px,3vw,22px)}
     .sub{text-align:center;font-size:13px;color:rgba(240,208,128,.35);font-style:italic;margin-bottom:24px}
     .dot{display:inline-block;border-radius:50%;width:8px;height:8px;flex-shrink:0}
 
-    /* Toast */
     .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(12,9,5,.97);border:1px solid rgba(201,168,76,.35);color:#c9a84c;padding:10px 22px;border-radius:30px;font-size:12px;font-family:monospace;z-index:999;white-space:nowrap}
 
     /* Header */
     .header{padding:0 16px 14px}
-    .header-row{display:flex;justify-content:space-between;align-items:center;max-width:860px;margin:0 auto;gap:10px}
-    .name-badge{display:flex;align-items:center;gap:7px;font-size:13px;font-style:italic;font-weight:400}
-    .header-btns{display:flex;gap:8px;flex-shrink:0}
-    .add-btn{padding:9px 16px;border-radius:30px;border:1px solid rgba(201,168,76,.3);background:rgba(201,168,76,.1);color:#c9a84c;cursor:pointer;font-size:12px;white-space:nowrap;transition:background .2s}
+    .header-row{display:flex;justify-content:space-between;align-items:center;max-width:860px;margin:0 auto;gap:8px;flex-wrap:wrap}
+    .name-badge{display:flex;align-items:center;gap:7px;font-size:13px;font-style:italic}
+    .header-btns{display:flex;gap:6px;flex-shrink:0}
+    .add-btn{padding:8px 14px;border-radius:30px;border:1px solid rgba(201,168,76,.3);background:rgba(201,168,76,.1);color:#c9a84c;cursor:pointer;font-size:12px;white-space:nowrap}
     .add-btn:hover{background:rgba(201,168,76,.18)}
-    .team-btn{padding:9px 16px;border-radius:30px;border:1px solid rgba(126,200,227,.2);background:rgba(126,200,227,.06);color:#7ec8e3;cursor:pointer;font-size:12px;white-space:nowrap;transition:background .2s}
+    .team-btn{padding:8px 14px;border-radius:30px;border:1px solid rgba(126,200,227,.2);background:rgba(126,200,227,.06);color:#7ec8e3;cursor:pointer;font-size:12px;white-space:nowrap}
     .team-btn:hover{background:rgba(126,200,227,.12)}
+    .logout-btn{padding:8px 12px;border-radius:30px;border:1px solid rgba(255,80,80,.15);background:transparent;color:rgba(255,80,80,.4);cursor:pointer;font-size:13px}
+    .logout-btn:hover{background:rgba(255,80,80,.08);color:rgba(255,80,80,.7)}
 
     /* Team panel */
-    .team-panel{max-width:860px;margin:0 auto 16px;padding:20px 16px;background:rgba(126,200,227,.03);border:1px solid rgba(126,200,227,.12);border-radius:14px}
-    .member-list{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
-    .member-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+    .team-panel{max-width:860px;margin:0 auto 14px;padding:18px 16px;background:rgba(126,200,227,.03);border:1px solid rgba(126,200,227,.1);border-radius:14px}
+    .member-list{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+    .member-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
     .member-row:last-child{border-bottom:none}
-    .member-name{font-size:14px;font-weight:400;min-width:80px}
+    .member-name{font-size:14px;min-width:70px}
     .you-tag{font-size:10px;color:rgba(255,255,255,.25);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:2px 7px;font-family:monospace}
-    .member-colors{display:flex;flex-wrap:wrap;gap:6px;flex:1}
-    .team-hint{font-size:11px;color:rgba(255,255,255,.2);font-style:italic}
+    .member-colors{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+    .team-hint{font-size:11px;color:rgba(255,255,255,.18);font-style:italic}
 
     /* Stats */
-    .stats-row{display:flex;gap:10px;justify-content:center;padding:0 16px 16px;flex-wrap:wrap}
+    .stats-row{display:flex;gap:10px;justify-content:center;padding:0 16px 14px;flex-wrap:wrap}
     .stat-box{padding:10px 14px;border-radius:12px;border:1px solid rgba(201,168,76,.1);background:rgba(201,168,76,.03);text-align:center;flex:1;max-width:130px;min-width:70px}
-    .stat-num{font-size:22px}
+    .stat-num{font-size:20px}
     .stat-label{font-size:10px;letter-spacing:.1em;color:rgba(201,168,76,.35);text-transform:uppercase;margin-top:3px}
 
     /* Filters */
-    .filters{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:0 16px 16px;max-width:860px;margin:0 auto}
-    .f-btn{padding:6px 12px;border-radius:20px;border:1px solid rgba(201,168,76,.12);background:transparent;color:rgba(240,208,128,.3);cursor:pointer;font-size:11px;letter-spacing:.03em;font-family:Georgia,serif;white-space:nowrap;transition:all .18s}
+    .filters{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:0 16px 14px;max-width:860px;margin:0 auto}
+    .f-btn{padding:5px 11px;border-radius:20px;border:1px solid rgba(201,168,76,.12);background:transparent;color:rgba(240,208,128,.3);cursor:pointer;font-size:11px;font-family:Georgia,serif;white-space:nowrap;transition:all .18s}
     .f-btn:hover{color:rgba(240,208,128,.6);border-color:rgba(201,168,76,.25)}
     .f-active{background:rgba(201,168,76,.1)!important;border-color:#c9a84c!important;color:#c9a84c!important}
 
     /* Form */
-    .form-card{max-width:860px;margin:0 auto 16px;padding:20px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(201,168,76,.14);border-radius:14px}
-    .form-title{font-size:14px;color:#c9a84c;margin-bottom:14px;font-weight:400;letter-spacing:.06em}
-    .form-grid{display:flex;flex-direction:column;gap:9px}
+    .form-card{max-width:860px;margin:0 auto 14px;padding:18px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(201,168,76,.14);border-radius:14px}
+    .form-title{font-size:14px;color:#c9a84c;margin-bottom:12px;font-weight:400;letter-spacing:.06em}
+    .form-grid{display:flex;flex-direction:column;gap:8px}
     .inp{width:100%;padding:10px 13px;border-radius:8px;border:1px solid rgba(201,168,76,.14);background:rgba(0,0,0,.35);color:rgba(240,208,128,.85);font-size:14px;outline:none;font-family:Georgia,serif}
     .inp::placeholder{color:rgba(255,255,255,.2)}
     .sel-row{display:flex;gap:8px;flex-wrap:wrap}
     .sel{flex:1;min-width:100px;padding:9px 10px;border-radius:8px;border:1px solid rgba(201,168,76,.14);background:#0d0b10;color:#f0d080;font-size:13px;cursor:pointer;outline:none}
-    .form-actions{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}
-    .save-btn{padding:10px 24px;border-radius:30px;border:1px solid rgba(39,174,96,.3);background:rgba(39,174,96,.12);color:#7debb0;cursor:pointer;font-size:13px}
-    .cancel-btn{padding:10px 16px;border-radius:30px;border:1px solid rgba(255,80,80,.15);background:transparent;color:rgba(255,80,80,.45);cursor:pointer;font-size:13px}
+    .form-actions{display:flex;gap:8px;margin-top:12px}
+    .save-btn{padding:9px 22px;border-radius:30px;border:1px solid rgba(39,174,96,.3);background:rgba(39,174,96,.12);color:#7debb0;cursor:pointer;font-size:13px}
+    .cancel-btn{padding:9px 14px;border-radius:30px;border:1px solid rgba(255,80,80,.15);background:transparent;color:rgba(255,80,80,.45);cursor:pointer;font-size:13px}
 
     /* Cards */
     .list{max-width:860px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:9px}
-    .empty{text-align:center;padding:48px 20px;color:rgba(255,255,255,.2);font-style:italic}
-    .card{padding:14px;border-radius:13px;border:1px solid rgba(201,168,76,.1);background:rgba(255,255,255,.022);transition:border-color .2s}
-    .card:hover{border-color:rgba(201,168,76,.22)}
+    .empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,.2);font-style:italic}
+    .card{padding:14px;border-radius:12px;border:1px solid rgba(201,168,76,.1);background:rgba(255,255,255,.02);transition:border-color .2s}
+    .card:hover{border-color:rgba(201,168,76,.2)}
     .card-done{opacity:.5}
     .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
     .card-text{flex:1;min-width:0}
@@ -480,18 +507,14 @@ function Styles() {
     .icon-btn.danger{color:rgba(255,80,80,.4)}
     .icon-btn.danger:hover{color:rgba(255,80,80,.8)}
 
-    /* Desktop */
     @media(min-width:640px){
       .header{padding:0 28px 16px}
-      .filters{padding:0 28px 20px}
+      .filters,.stats-row{padding-left:28px;padding-right:28px}
       .list{padding:0 28px;gap:11px}
-      .form-card,.team-panel{padding:24px 28px}
-      .stats-row{padding:0 28px 20px}
-      .card{padding:18px 20px}
+      .form-card,.team-panel{padding:22px 28px}
+      .card{padding:16px 20px}
       .task-name{font-size:15px}
       .sel-row{flex-wrap:nowrap}
-      .stat-box{max-width:110px}
-      .add-btn,.team-btn{font-size:13px}
     }
   `}</style>
 }
