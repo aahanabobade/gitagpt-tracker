@@ -202,7 +202,7 @@ export default function Home() {
           onKeyDown={e=>e.key==='Enter'&&checkPin()}
           placeholder="● ● ● ●" className={`auth-input center${pinErr?' inp-err':''}`}/>
         {pinErr && <p className="auth-err">Wrong PIN. Try again.</p>}
-        <button onClick={checkPin} className="primary-btn">Unlock 🔐</button>
+        <button onClick={checkPin} className="primary-btn">Unlock</button>
       </div>
     </div>
   )
@@ -254,7 +254,7 @@ export default function Home() {
           <button onClick={handleAuth} disabled={authLoad}
             className="primary-btn" style={{width:'100%', marginTop:4,
               ...(authMode==='register'?{borderColor:`${selColor}66`,color:selColor,background:`${selColor}18`}:{})}}>
-            {authLoad ? 'Please wait…' : authMode === 'login' ? 'Sign In →' : 'Create Account 🙏'}
+            {authLoad ? 'Please wait…' : authMode === 'login' ? 'Sign In →' : 'Create Account'}
           </button>
         </div>
       </div>
