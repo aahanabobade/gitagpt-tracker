@@ -3,7 +3,7 @@
 create table tasks (
   id uuid default gen_random_uuid() primary key,
   name text not null,
-  desc text,
+  description text,
   layer text check (layer in ('fe','be','full','ai')),
   tech text[] default '{}',
   priority text check (priority in ('mvp','v2','v3')) default 'mvp',

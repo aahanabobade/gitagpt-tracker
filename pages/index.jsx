@@ -19,7 +19,7 @@ const C = {
   done: { bg:'rgba(39,174,96,.15)',   color:'#7debb0', border:'rgba(39,174,96,.25)'  },
 }
 
-const EMPTY = { name:'', desc:'', layer:'fe', tech:'', priority:'mvp', status:'todo', assigned_to:'' }
+const EMPTY = { name:'', description:'', layer:'fe', tech:'', priority:'mvp', status:'todo', assigned_to:'' }
 
 export default function Home() {
   const [tasks, setTasks]     = useState([])
@@ -84,7 +84,7 @@ export default function Home() {
   }
 
   function openEdit(t) {
-    setForm({ name:t.name, desc:t.desc||'', layer:t.layer, tech:(t.tech||[]).join(', '), priority:t.priority, status:t.status, assigned_to:t.assigned_to||'' })
+    setForm({ name:t.name, description:t.description||'', layer:t.layer, tech:(t.tech||[]).join(', '), priority:t.priority, status:t.status, assigned_to:t.assigned_to||'' })
     setEditId(t.id); setShowForm(true)
   }
 
@@ -165,7 +165,7 @@ export default function Home() {
           <h3 style={S.formTitle}>{editId ? 'Edit Task' : 'New Task'}</h3>
           <div style={S.formGrid}>
             <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Task name *" style={S.inp} />
-            <input value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} placeholder="Description" style={S.inp} />
+            <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description" style={S.inp} />
             <input value={form.tech} onChange={e=>setForm({...form,tech:e.target.value})} placeholder="Tech stack (comma separated)" style={S.inp} />
             <input value={form.assigned_to} onChange={e=>setForm({...form,assigned_to:e.target.value})} placeholder="Assign to…" style={S.inp} />
             <div style={S.selRow}>
@@ -192,7 +192,7 @@ export default function Home() {
             <div style={S.cardTop}>
               <div>
                 <div style={S.taskName}>{t.name}</div>
-                {t.desc && <div style={S.taskDesc}>{t.desc}</div>}
+                {t.description && <div style={S.taskDesc}>{t.description}</div>}
               </div>
               <div style={S.cardActions}>
                 <button onClick={()=>cycleStatus(t)} style={{...S.badge, background:C[t.status]?.bg, color:C[t.status]?.color, border:`1px solid ${C[t.status]?.border}`, cursor:'pointer'}} title="Click to advance status">
