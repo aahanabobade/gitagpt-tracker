@@ -1,6 +1,8 @@
 -- Run this in Supabase SQL Editor
+-- (If you already ran the old schema, just run the NEW parts at the bottom)
 
-create table tasks (
+-- ── Tasks table ──────────────────────────────────────────────────────────────
+create table if not exists tasks (
   id uuid default gen_random_uuid() primary key,
   name text not null,
   description text,
@@ -14,9 +16,21 @@ create table tasks (
   updated_at timestamptz default now()
 );
 
--- Enable real-time
-alter publication supabase_realtime add table tasks;
+-- ── Members table (NEW) ───────────────────────────────────────────────────────
+create table if not exists members (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  color text not null default '#c9a84c',
+  joined_at timestamptz default now()
+);
 
--- Anyone with the URL can read/write (no auth needed)
+-- Enable real-time on both tables
+alter publication supabase_realtime add table tasks;
+alter publication supabase_realtime add table members;
+
+-- Public read/write (PIN is handled in the app)
 alter table tasks enable row level security;
-create policy "public_all" on tasks for all using (true) with check (true);
+create policy "public_all_tasks" on tasks for all using (true) with check (true);
+
+alter table members enable row level security;
+create policy "public_all_members" on members for all using (true) with check (true);
